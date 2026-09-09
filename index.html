@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#1b2a33">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icon.svg">
+<title>Docking under power</title>
+<style>
+  :root { --ink:#1b2a33; --paper:#f4f0e6; --brass:#c9a34a; }
+  html,body{margin:0;height:100%;overflow:hidden;background:#7fa9c3;font-family:Georgia,"Times New Roman",serif;color:var(--ink)}
+  canvas{display:block;touch-action:none}
+  #hud{position:fixed;left:12px;top:12px;background:rgba(244,240,230,.92);border:1px solid #9a8b6c;padding:10px 14px;line-height:1.5;font-size:15px;min-width:230px}
+  #hud b{font-weight:normal;color:#5c4d2e;display:inline-block;width:70px}
+  #rudGauge{position:relative;height:12px;width:132px;background:#ddd6c4;border:1px solid #9a8b6c;margin:4px 0}
+  #rudGauge:before{content:"";position:absolute;left:65px;top:0;bottom:0;border-left:1px solid #5c4d2e}
+  #hRudder{position:absolute;left:60px;top:1px;width:10px;height:10px;background:#c0392b}
+  #panel{position:fixed;right:12px;top:12px;width:250px;background:rgba(244,240,230,.94);border:1px solid #9a8b6c;padding:10px 14px;font-size:14px;line-height:1.7;max-height:calc(100% - 100px);overflow:auto}
+  #panel.hidden{display:none}
+  #panel h3{margin:6px 0 2px;font-size:14px;font-weight:normal;border-bottom:1px solid #9a8b6c}
+  button,select,input[type=file]{font:inherit;font-size:13px}
+  button{background:var(--paper);border:1px solid #9a8b6c;padding:2px 8px;margin:1px 2px 1px 0;cursor:pointer}
+  button:hover{background:#e9e2cf}
+  #bPanel{position:fixed;right:12px;bottom:80px}
+  #touch{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:space-between;padding:10px 16px;pointer-events:none}
+  #touch div{display:flex;gap:10px;pointer-events:auto}
+  #touch button{width:74px;height:56px;font-size:20px;border-radius:8px;background:rgba(244,240,230,.85)}
+  #modeTxt{position:fixed;left:50%;top:14px;transform:translateX(-50%);background:#ffd400;padding:4px 12px;font-size:14px}
+  #modeTxt:empty{display:none}
+  #help{font-size:12.5px;color:#5c4d2e;line-height:1.5}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <div><b>Speed</b><span id="hSpeed">0.0 kn</span></div>
+  <div><b>Heading</b><span id="hHdg">000°</span></div>
+  <div><b>Engine</b><span id="hRpm">0 rpm neutral</span></div>
+  <div><b>Rudder</b><span id="hRudTxt">0°</span></div>
+  <div id="rudGauge"><div id="hRudder"></div></div>
+  <div><b>True wind</b><span id="hWind">–</span></div>
+  <div><b>Clock</b><span id="hTime">0 s</span></div>
+</div>
+<div id="modeTxt"></div>
+<div id="panel">
+  <h3>Wind</h3>
+  <select id="windSel">
+    <option value="calm">Calm</option>
+    <option value="light">Light, 5 kn</option>
+    <option value="moderate" selected>Moderate, 12 kn</option>
+    <option value="gusty">Fresh and gusty, 18 kn</option>
+    <option value="random">Random</option>
+  </select>
+  <button id="bRandomWind">New random</button>
+  <h3>Boat</h3>
+  <button id="bReset">Reset (R)</button><button id="bPlace">Place boat</button><br>
+  <label>Boat sprite <input id="spriteFile" type="file" accept="image/*"></label>
+  <h3>Waterway</h3>
+  <label>Import map (image or saved JSON) <input id="mapFile" type="file" accept="image/*,.json,application/json"></label>
+  <button id="bScale">Set map scale</button><br>
+  <button id="bDock">Draw polygon</button><button id="bUndo">Undo</button><button id="bClearDocks">Clear all</button><br>
+  <button id="bFinishLand">Finish: inside is land</button><br>
+  <button id="bFinishWater">Finish: inside is water</button><br>
+  <button id="bSave">Export scenario JSON</button>
+  <h3>View</h3>
+  <button id="bFit">Fit (F)</button><button id="bFollow">Follow boat</button><button id="bBoatUp">Boat up</button>
+  <h3>Keys</h3>
+  <div id="help">
+    <b>Z</b> / <b>X</b> wheel to port / starboard; hold to spin faster. Wheel stays where you leave it; <b>C</b> centres it.<br>
+    <b>↑</b> / <b>↓</b> step the throttle: neutral → 800 → 1000 → 1500 → 2000 → 2500 ahead, same steps astern.<br>
+    <b>+</b> / <b>−</b> zoom in / out on the boat, <b>B</b> toggles boat-up / north-up, <b>Space</b> pause, <b>N</b> new random wind, drag to pan, scroll to zoom.<br>Candle on the boat: green ahead / red astern, pale = commanded, solid = actual rpm. Windsock: each stripe = 3 kn.
+  </div>
+</div>
+<button id="bPanel">Panel</button>
+<div id="touch">
+  <div><button id="bPort">Z ◀</button><button id="bStbd">▶ X</button></div>
+  <div><button id="bDown">▼</button><button id="bUp">▲</button></div>
+</div>
+<script type="module" src="./src/app.js"></script>
+<script>
+  // Offline support. Safari only registers this over HTTPS or localhost.
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
+</script>
+</body>
+</html>
