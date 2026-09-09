@@ -1,5 +1,5 @@
 // app.js — canvas renderer, keyboard/touch input, scenario editor.
-import { JEANNEAU_36, DEG, KN, stepBoat, initialState, clampThrottle, rpmSetpoint, sumForces, propThrust } from './physics.js';
+import { JEANNEAU_36, DEG, KN, stepBoat, initialState, clampThrottle, rpmSetpoint, sumForces, propThrust, shaftToEngine } from './physics.js';
 import { WindModel, WIND_PRESETS, mulberry32 } from './wind.js';
 import { contactForces, sampleOutline } from './collision.js';
 
@@ -203,7 +203,7 @@ function drawBoat() {
   }
   // throttle candle from midship: green grows forward (ahead), red grows aft (astern)
   const rpmMax = P.engine.ahead[P.engine.ahead.length - 1];
-  const setF = rpmSetpoint(sim.throttleIndex, P) / rpmMax, actF = (s[7] * 60 * P.prop.gear) / rpmMax;
+  const setF = rpmSetpoint(sim.throttleIndex, P) / rpmMax, actF = shaftToEngine(s[7], P) / rpmMax;
   const candle = (f, alpha) => {
     if (Math.abs(f) < 0.01) return;
     const len = 4.0 * Math.abs(f) * v.s, wid = 0.6 * v.s;
@@ -228,7 +228,7 @@ function drawHUD() {
   const s = sim.s, w = sim.wind.state;
   const sog = Math.hypot(s[3], s[4]) / KN;
   const hdg = ((s[2] / DEG) % 360 + 360) % 360;
-  const rpm = Math.round(s[7] * 60 * P.prop.gear);
+  const rpm = Math.round(shaftToEngine(s[7], P));
   $('hSpeed').textContent = `${sog.toFixed(1)} kn`;
   $('hHdg').textContent = `${hdg.toFixed(0).padStart(3, '0')}°`;
   $('hRpm').textContent = `${Math.abs(rpm)} rpm ${rpm > 20 ? 'ahead' : rpm < -20 ? 'astern' : 'neutral'} (set ${rpmSetpoint(sim.throttleIndex, P)})`;

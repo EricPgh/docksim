@@ -17,8 +17,8 @@ export const KN = 0.514444;    // m/s per knot
 
 // ----------------------------------------------------------------------------
 // Parameter set.  Numbers are for the Jeanneau Sun Odyssey 36i (LOA 10.94 m,
-// beam 3.59 m, draft 1.94 m, 5700 kg light, Yanmar 3YM30 29 hp, single spade
-// rudder).  Everything a user might want to tune lives here.
+// beam 3.59 m, draft 1.94 m, 5700 kg light, Yanmar 3YM30 29 hp on a conventional
+// shaft with a KM2P mechanical gearbox and a feathering prop, single spade rudder).  Everything a user might want to tune lives here.
 // ----------------------------------------------------------------------------
 export const JEANNEAU_36 = {
   name: 'Jeanneau Sun Odyssey 36i',
@@ -37,8 +37,11 @@ export const JEANNEAU_36 = {
   rudder: { area: 0.75, ar: 3.0, x: -4.6, cd0: 0.010, e: 0.8, alphaStall: 15 * DEG, cn: 1.5,
             deltaMax: 35 * DEG, span: 1.5 },
   wheel: { lockToLockTurns: 2.0, rateMin: 90 * DEG, rateMax: 360 * DEG, rampTime: 1.0 },
-  prop: { D: 0.40, Kt0: 0.32, J0: 0.85, astern: 0.65, gear: 2.21, x: -3.6,
-          wake: 0.05, slipFrac: 0.45, kR: 0.5, tau: 0.8 },
+  prop: { D: 0.42, Kt0: 0.26, J0: 0.85,   // Kt0 lowered with the larger D so bollard thrust stays ~3 kN
+          astern: 0.85,                // feathering prop: reverse blade angle is good; rpm loss is in gearAstern
+          gearAhead: 2.21, gearAstern: 3.06,   // KM2P mechanical box: taller reduction astern
+          x: -4.0,                     // shaft prop sits ~0.6 m ahead of the rudder stock
+          wake: 0.05, slipFrac: 0.50, kR: 0.5, tau: 0.8 },
   engine: { ahead: [0, 800, 1000, 1500, 2000, 2500], astern: [0, 800, 1000, 1500, 2000] },
   windage: { areaFrontal: 6.0, areaLateral: 18.0, cx: 0.7, cy: 0.9, xCE: 0.5 },
   // hull outline in body frame, bow first, clockwise (x fwd, y stbd)
@@ -166,6 +169,10 @@ export function windForces(s, wE, wN, P) {
 // ----------------------------------------------------------------------------
 // 5. Controls
 // ----------------------------------------------------------------------------
+// engine rpm <-> shaft rev/s through whichever reduction is engaged
+export function engineToShaft(rpm, P) { return rpm / 60 / (rpm < 0 ? P.prop.gearAstern : P.prop.gearAhead); }
+export function shaftToEngine(n, P) { return n * 60 * (n < 0 ? P.prop.gearAstern : P.prop.gearAhead); }
+
 export function rpmSetpoint(throttleIndex, P) {
   const E = P.engine;
   if (throttleIndex >= 0) return E.ahead[Math.min(throttleIndex, E.ahead.length - 1)];
@@ -212,7 +219,7 @@ export function derivative(s, inp, P) {
   const sp = Math.sin(psi), cp = Math.cos(psi);
   let ddelta = rudderRate(inp.wheelCmd, inp.heldTime, P);
   if ((delta >= P.rudder.deltaMax && ddelta > 0) || (delta <= -P.rudder.deltaMax && ddelta < 0)) ddelta = 0;
-  const nSet = rpmSetpoint(inp.throttleIndex, P) / 60 / P.prop.gear;
+  const nSet = engineToShaft(rpmSetpoint(inp.throttleIndex, P), P);
   const dn = (nSet - n) / P.prop.tau;
   return [u * sp + v * cp, u * cp - v * sp, r, du, dv, dr, ddelta, dn];
 }

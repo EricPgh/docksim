@@ -88,8 +88,12 @@ Momentum/K_T form with the advance ratio measured in the direction of thrust,
 
 So: T ∝ n² at bollard; ahead thrust falls with speed and reverses above the
 zero-thrust speed J₀ n D; astern thrust while still moving ahead is a stronger
-brake (J_a < 0); a folding prop in reverse is derated by 0.65. Engine rpm →
-shaft rps through the saildrive ratio 2.21, with a first-order lag τ = 0.8 s.
+brake (J_a < 0). Engine rpm → shaft rps through the KM2P mechanical gearbox,
+which has a taller reduction astern (3.06:1) than ahead (2.21:1): at equal
+engine rpm the shaft turns 28 % slower in reverse and thrust, ∝ n², is
+roughly halved before any propeller loss. The feathering prop's reverse
+efficiency is a separate factor of 0.85, so astern bollard thrust is ~45 % of
+ahead (test). First-order rpm lag τ = 0.8 s.
 No prop walk (as requested — it would be one added term Y_pw ∝ n|n| at x_p).
 
 ## 5. Rudder in the slipstream
@@ -152,6 +156,8 @@ is halved.
 ## Parameters (JEANNEAU_36)
 
 Sun Odyssey 36i figures: LOA 10.94 m, LWL 9.84 m, beam 3.59 m, draft 1.94 m,
-5700 kg light (6200 loaded), Yanmar 3YM30 29 hp, SD20 saildrive 2.21:1,
-0.40 m 3-blade folding prop, single spade rudder ~0.75 m². Appendage areas,
+5700 kg light (6200 loaded), Yanmar 3YM30 29 hp on a conventional shaft, KM2P
+gearbox 2.21:1 ahead / 3.06:1 astern, 0.42 m 3-blade feathering prop about
+0.6 m ahead of the rudder stock, single spade rudder ~0.75 m². No prop walk
+(feathering prop; none observed on the boat). Appendage areas,
 windage areas and C_x/C_y are estimates, not manufacturer data.
