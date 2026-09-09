@@ -381,6 +381,35 @@ $('loadFile').addEventListener('change', e => {
     resetBoat(); fitView();
   }; r.readAsText(f);
 });
+// ---------------------------------------------------------------- server-side scenarios
+// A static host (GitHub Pages) cannot list a directory, so data/index.json is a
+// hand-maintained catalogue: { scenarios: [ { name, file, note } ] }.
+async function loadCatalogue() {
+  const sel = $('dataSel');
+  try {
+    const res = await fetch('./data/index.json', { cache: 'no-cache' });
+    if (!res.ok) throw new Error(res.status);
+    const list = (await res.json()).scenarios || [];
+    sel.innerHTML = '<option value="">Load from server…</option>' +
+      list.map(x => `<option value="${x.file}">${x.name}</option>`).join('');
+    sel.disabled = list.length === 0;
+  } catch {
+    sel.innerHTML = '<option value="">No data/index.json found</option>';
+    sel.disabled = true;
+  }
+}
+$('dataSel').addEventListener('change', async e => {
+  const file = e.target.value; if (!file) return;
+  try {
+    const res = await fetch(`./data/${file}`, { cache: 'no-cache' });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    loadScenario(await res.json());
+  } catch (err) {
+    alert(`Could not load data/${file}: ${err.message}`);
+  }
+});
+loadCatalogue();
+
 $('bPanel').onclick = () => $('panel').classList.toggle('hidden');
 
 // ---------------------------------------------------------------- main loop
