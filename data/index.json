@@ -1,6 +1,7 @@
 {
   "comment": "Scenario catalogue. GitHub Pages cannot list a directory, so add an entry here for each JSON you drop in data/. 'file' is relative to this file.",
   "scenarios": [
+    { "name": "Alo Wai", "file": "alowai.json", "note": "immense" },
     { "name": "North Coast Obstacles", "file": "northcoast_filled.json", "note": "watch the leeward rocks" },
     { "name": "North Coast Empty", "file": "northcoast_empty.json", "note": "often slipped boats don't appear in this one" }
   ]

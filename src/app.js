@@ -69,6 +69,22 @@ function resetBoat() {
   sim.s = initialState(st.E, st.N, st.psi);
   sim.t = 0; sim.throttleIndex = 0; sim.wheelCmd = 0; sim.hits = 0; sim.trail = [];
 }
+// Keyboard pan: i/k up/down, j/l left/right, held.  Rate is in screen pixels per second, converted to
+// world units and rotated out of the view frame so 'up' is always up the screen,
+// including in boat-up mode.  Panning cancels follow.
+const PAN_PX_PER_S = 420;
+function panStep(dt) {
+  const sx = (keys.l ? 1 : 0) - (keys.j ? 1 : 0);      // screen right
+  const sy = (keys.i ? 1 : 0) - (keys.k ? 1 : 0);      // screen up
+  if (!sx && !sy) return;
+  const v = sim.view, n = Math.hypot(sx, sy);
+  const dpx = PAN_PX_PER_S * dt / n;
+  // screen delta -> world delta: undo the view rotation, then the y flip
+  const th = -viewRot(), dxs = sx * dpx, dys = -sy * dpx;          // canvas y grows downward
+  const dxu = dxs * Math.cos(th) - dys * Math.sin(th), dyu = dxs * Math.sin(th) + dys * Math.cos(th);
+  v.cE += dxu / v.s; v.cN -= dyu / v.s;
+  v.follow = false; v.boatUp = false;
+}
 function zoomOnBoat(f) { sim.view.s *= f; sim.view.cE = sim.s[0]; sim.view.cN = sim.s[1]; }
 function fitView() {
   const sc = sim.scenario;
@@ -418,6 +434,7 @@ addEventListener('resize', resize); resize(); resetBoat();
 let last = performance.now(), acc = 0;
 function frame(now) {
   let dt = Math.min(0.1, (now - last) / 1000); last = now;
+  panStep(dt);
   if (!sim.paused) { acc += dt; while (acc >= H) { physicsStep(now); acc -= H; } }
   draw();
   requestAnimationFrame(frame);
