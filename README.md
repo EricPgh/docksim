@@ -38,6 +38,32 @@ Everything tunable is in `JEANNEAU_36` at the top of physics.js. The two
 least-grounded numbers are `hull.cdCross` and `hull.T0` (set the pivot rate);
 see MODEL.md §3.
 
+## Wind sheltering around buildings
+
+Land polygons can carry a height (you are asked when you finish one, and
+`heights` in the JSON parallels `docks`). "Build wind field" then pre-computes
+a speed multiplier, flow deflection and gust-intensity field over the whole map
+for 16 wind directions, and stores it in the scenario JSON, so it costs nothing
+at run time. "Show wind field" overlays it — blue is sheltered, orange is
+accelerated — which is the way to sanity-check heights before sailing.
+
+Expect roughly 200 kB of JSON for a small marina at a 2 m grid; a 4 m grid
+quarters that. Rescaling the map invalidates the field, so set the scale first,
+then draw, then build. See MODEL.md section 9 for the model and its limits.
+
+## Scenarios on the server
+
+Drop exported scenario JSONs in `data/` and list them in `data/index.json`:
+
+    { "scenarios": [ { "name": "Home marina", "file": "home.json" } ] }
+
+The dropdown in the panel is filled from that file at startup, so scenarios
+committed to the repo are one tap away on the iPad with no file picker. A
+static host cannot list a directory, hence the hand-maintained catalogue. The
+"Import map" button still takes a local image or JSON. Note that a scenario
+carrying a map image embeds it as a data URL, so those files are large — commit
+them with that in mind.
+
 ## On an iPad, without the Mac
 
 The app is a PWA: `manifest.webmanifest` + `sw.js` cache the whole thing on

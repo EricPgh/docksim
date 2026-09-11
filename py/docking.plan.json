@@ -1,0 +1,84 @@
+{
+ "scenario": "../data/northcoast_filled.json",
+ "wind_kn": 12.0,
+ "wind_from_deg": 200.0,
+ "start": [
+  122.1,
+  69.0,
+  57.1
+ ],
+ "goal": [
+  159.6,
+  34.5,
+  56.0
+ ],
+ "arrival": {
+  "t": 66.75,
+  "pos_err_m": 6.170444108058652,
+  "head_err_deg": 97.14367458204038,
+  "speed_ms": 0.5011524205721499,
+  "contact": 0.0
+ },
+ "segments": [
+  {
+   "duration_s": 7.939768194260097,
+   "rudder_deg": 11.791991864995746,
+   "throttle_index": 2,
+   "rpm": 1000
+  },
+  {
+   "duration_s": 6.178449146489255,
+   "rudder_deg": 11.899532473408401,
+   "throttle_index": 2,
+   "rpm": 1000
+  },
+  {
+   "duration_s": 11.185823948493251,
+   "rudder_deg": 16.106388468173627,
+   "throttle_index": 1,
+   "rpm": 800
+  },
+  {
+   "duration_s": 11.445751821114397,
+   "rudder_deg": 12.75452915904308,
+   "throttle_index": 4,
+   "rpm": 2000
+  },
+  {
+   "duration_s": 2.180602922775226,
+   "rudder_deg": 1.5182555351040226,
+   "throttle_index": 0,
+   "rpm": 0
+  },
+  {
+   "duration_s": 12.897105645877557,
+   "rudder_deg": 10.452293946906243,
+   "throttle_index": 1,
+   "rpm": 800
+  },
+  {
+   "duration_s": 5.9109752692891835,
+   "rudder_deg": -2.352860563414818,
+   "throttle_index": 1,
+   "rpm": 800
+  },
+  {
+   "duration_s": 6.8140874806625105,
+   "rudder_deg": -16.38880426991786,
+   "throttle_index": -1,
+   "rpm": -800
+  },
+  {
+   "duration_s": 2.251267651921249,
+   "rudder_deg": 5.789773667237672,
+   "throttle_index": -1,
+   "rpm": -800
+  },
+  {
+   "duration_s": 7.556003161012113,
+   "rudder_deg": 6.506665541120353,
+   "throttle_index": 2,
+   "rpm": 1000
+  }
+ ]
+}

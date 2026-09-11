@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   JEANNEAU_36 as P, DEG, KN, RHO_W, derived, foilCoeffs, foilForce, hullForces, keelForces,
-  propThrust, rudderForces, windForces, rpmSetpoint, clampThrottle, rudderRate,
+  propThrust, rudderForces, windForces, rpmSetpoint, clampThrottle, rudderRate, engineToShaft, shaftToEngine,
   derivative, rk4, stepBoat, initialState,
 } from '../src/physics.js';
 import { WindModel, WIND_PRESETS, mulberry32 } from '../src/wind.js';
@@ -62,8 +62,14 @@ test('prop: zero at n=0, n^2 bollard scaling, astern weaker, thrust falls with s
   assert.ok(Ta < 0 && Math.abs(Ta) < T1, 'astern weaker');
   assert.ok(propThrust(2, 10, P).T < T1, 'ahead thrust decreases with advance');
   assert.ok(propThrust(2, -10, P).T < Ta, 'astern thrust while moving ahead is a stronger brake');
-  const n2500 = 2500 / 60 / P.prop.gear;
-  near(propThrust(0, n2500, P).T, 3000, 600, 'full-throttle bollard thrust ~3 kN');
+  const n2500 = engineToShaft(2500, P);
+  near(propThrust(0, n2500, P).T, 3300, 700, 'full-throttle bollard thrust ~3 kN');
+});
+test('gearbox: taller reduction astern -> slower shaft and roughly half the thrust at equal engine rpm', () => {
+  near(engineToShaft(2000, P) / -engineToShaft(-2000, P), P.prop.gearAstern / P.prop.gearAhead, 1e-12, 'ratio');
+  near(shaftToEngine(engineToShaft(-1500, P), P), -1500, 1e-9, 'round trip');
+  const ratio = -propThrust(0, engineToShaft(-2000, P), P).T / propThrust(0, engineToShaft(2000, P), P).T;
+  near(ratio, 0.45, 0.1, 'astern/ahead bollard thrust');
 });
 
 // ---------------------------------------------------------------- rudder

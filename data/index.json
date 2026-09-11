@@ -3,6 +3,7 @@
   "scenarios": [
     { "name": "Alo Wai", "file": "alowai.json", "note": "immense" },
     { "name": "North Coast Obstacles", "file": "northcoast_filled.json", "note": "watch the leeward rocks" },
+    { "name": "North Coast with Wind", "file": "northcoast_wind.json", "note": "wind field applied" },
     { "name": "North Coast Empty", "file": "northcoast_empty.json", "note": "often slipped boats don't appear in this one" }
   ]
 }

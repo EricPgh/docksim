@@ -136,7 +136,55 @@ processes advanced with the exact discretisation
 sin² bump of 6–16 s with amplitude up to `puffAmp` V̄ and a direction veer of
 ±15°. Seeded PRNG (mulberry32) so scenarios are reproducible.
 
-## 9. Contact
+## 9. Local wind modification (sheltering)
+
+Optional, pre-computed once per scenario and stored in the JSON. Obstacle
+polygons carry a `height`; the field is built on a grid (default 2 m) for
+`nDirs` wind directions (default 16) in two stages, in this order:
+
+(a) **Inviscid flow-around.** The uniform free stream is projected so it does
+not penetrate the obstacles: **u** ← **u** + ∇λ with ∇²λ = −∇·**u**. This is a
+MAC (staggered) discretisation — velocities on cell faces, λ at cell centres —
+because on a collocated grid with centred differences the divergence and
+gradient operators are not adjoint, the odd and even points decouple
+(checkerboard), and the divergence barely falls. Walls get Neumann conditions
+on λ with the face velocity forced to zero; the domain edge gets Dirichlet
+λ = 0, so flow may enter and leave. An all-Neumann problem would be
+incompatible (its source does not integrate to zero) and SOR would drift.
+This stage alone produces the windward stagnation slow-down and the
+acceleration past the corners, and it conserves mass, because a solid body
+really is a mass barrier.
+
+(b) **Empirical wake.** A lee cavity of length Lr and a far wake to 3 Lr are
+multiplied in, tapering elliptically to the wake edge, using the Wilson/Röckle
+cavity length
+
+    Lr/H = 1.8 (W/H) / [ (L/H)^0.3 (1 + 0.24 W/H) ]
+
+with W the crosswind width, L the along-wind length, H the height. Turbulence
+intensity is raised in the same region.
+
+**The order is essential.** Projecting a field that already contains the wake
+makes the solver read the velocity deficit as a mass *sink* and draw flow
+inward from upwind, which is unphysical — a wake is a momentum deficit, not a
+sink. Getting this backwards produced a field that accelerated toward the
+centreline 20 m ahead of the building.
+
+At run time the boat's position and the current wind direction give
+`{mult, deflDeg, turb}` by bilinear interpolation in space and linear
+interpolation between direction bins. The free stream is split into mean and
+fluctuation so the multipliers act on the right parts: `mult` scales the mean
+and `turb` amplifies the gusts, so a lee is calmer on average yet gustier —
+which is what wind-tunnel data shows and what catches people out.
+
+**Limitations.** This is a Röckle-type diagnostic model (the family behind
+QUIC-URB), not CFD. The zone parameterisations are empirical wind-tunnel fits,
+so the coefficients are borrowed rather than derived. The flow is
+depth-averaged, so building downwash — a genuinely three-dimensional effect,
+and the dominant one at low levels — is only mimicked. No thermal effects, no
+vertical profile, no separation modelling beyond the stamped cavity.
+
+## 10. Contact
 
 Hull outline sampled every 0.3 m. Polygons are either land (contact when a sample
 is inside) or water (contact when a sample is outside every water polygon). A
@@ -145,7 +193,7 @@ Coulomb friction μ F_n (viscously regularised), applied at the point (so it als
 yaws the boat). k = 25 kN/m, c = 6 kN·s/m ≈ fender-like. Limitation: a sharp
 dock corner between two hull samples is missed; sample spacing is a parameter.
 
-## 10. Integration
+## 11. Integration
 
 Classical RK4, h = 0.01 s, on the full state including δ and n (their rate
 limits are inside the derivative; δ is clamped after the step). The wind

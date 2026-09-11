@@ -1,0 +1,60 @@
+{
+ "scenario": "../data/default-marina.json",
+ "wind_kn": 12.0,
+ "wind_from_deg": 200.0,
+ "start": [
+  65.0,
+  45.0,
+  90.0
+ ],
+ "goal": [
+  54.5,
+  9.0,
+  180.0
+ ],
+ "arrival": {
+  "t": 74.075,
+  "pos_err_m": 0.12862044182523433,
+  "head_err_deg": 0.9924485579738676,
+  "speed_ms": 0.10826474964023437,
+  "contact": 0.0
+ },
+ "segments": [
+  {
+   "duration_s": 3.862930414554967,
+   "rudder_deg": 12.210325960464814,
+   "throttle_index": 1,
+   "rpm": 800
+  },
+  {
+   "duration_s": 11.267481652645651,
+   "rudder_deg": 28.566307137081008,
+   "throttle_index": 4,
+   "rpm": 2000
+  },
+  {
+   "duration_s": 9.876544174073784,
+   "rudder_deg": 15.672641663668431,
+   "throttle_index": 2,
+   "rpm": 1000
+  },
+  {
+   "duration_s": 6.677140835774168,
+   "rudder_deg": -28.348597983234946,
+   "throttle_index": 2,
+   "rpm": 1000
+  },
+  {
+   "duration_s": 11.35929722735029,
+   "rudder_deg": -1.6563128128234923,
+   "throttle_index": 1,
+   "rpm": 800
+  },
+  {
+   "duration_s": 8.830804924371348,
+   "rudder_deg": -9.859832794914887,
+   "throttle_index": 0,
+   "rpm": 0
+  }
+ ]
+}

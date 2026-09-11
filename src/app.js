@@ -2,6 +2,7 @@
 import { JEANNEAU_36, DEG, KN, stepBoat, initialState, clampThrottle, rpmSetpoint, sumForces, propThrust, shaftToEngine } from './physics.js';
 import { WindModel, WIND_PRESETS, mulberry32 } from './wind.js';
 import { contactForces, sampleOutline } from './collision.js';
+import { buildShelterField, sampleShelter, serializeShelter, deserializeShelter, SHELTER_DEFAULTS } from './shelter.js';
 
 const P = JEANNEAU_36;
 const H = 0.01;                           // physics step [s]
@@ -27,7 +28,7 @@ function defaultMarina() {
     docks.push([[x, Hm - 16], [x + 1.0, Hm - 16], [x + 1.0, Hm - 2.5], [x, Hm - 2.5]]);
   }
   docks.push([[0, 0], [2.5, 0], [2.5, Hm], [0, Hm]]);               // west quay
-  return { widthM: W, heightM: Hm, pxPerM: null, image: null, docks, water: [], start: { E: 65, N: 45, psi: 90 } };
+  return { widthM: W, heightM: Hm, pxPerM: null, image: null, docks, heights: docks.map(() => 0), water: [], shelter: null, start: { E: 65, N: 45, psi: 90 } };
 }
 
 const sim = {
@@ -37,11 +38,12 @@ const sim = {
   wind: new WindModel(WIND_PRESETS.moderate, (Math.random() * 1e9) | 0),
   windVec: { E: 0, N: 0 },
   hullPts: sampleOutline(P.outline),
+  shelter: null, shelterAt: { mult: 1, deflDeg: 0, turb: 1 },
   sprite: null, spriteLengthM: P.LOA,
   bgImg: null,
   view: { s: 8, cE: 0, cN: 0, follow: false, boatUp: false },
   mode: 'sail',                         // 'sail' | 'scale' | 'dock' | 'place'
-  draft: [], undoStack: [], lastContact: 0, hits: 0, trail: [],
+  draft: [], undoStack: [], lastContact: 0, hits: 0, trail: [], showField: false,
   forces: null,
 };
 window.sim = sim;
@@ -133,7 +135,24 @@ function extraForces(s) {
 function physicsStep(now) {
   pollWheel(now);
   sim.wind.step(H);
-  const w = sim.wind.state; sim.windVec = { E: w.E, N: w.N };
+  const w = sim.wind.state;
+  // Local modification: scale the free-stream speed by the sheltering multiplier
+  // at the boat's position and rotate by the local deflection.  Gust amplitude is
+  // scaled by the turbulence multiplier, so a lee can be calmer on average yet
+  // gustier -- which is what wind-tunnel data shows and what catches people out.
+  const sh = sampleShelter(sim.shelter, sim.s[0], sim.s[1], w.dirDeg);
+  sim.shelterAt = sh;
+  if (sim.shelter) {
+    // Split the free stream into mean + fluctuation so the two multipliers act on
+    // the right parts: shelter scales the mean, turbulence amplifies the gusts.
+    const meanSpd = sim.wind.cfg.meanKn * KN;
+    const fluct = w.speed - meanSpd;
+    const spd = Math.max(0, sh.mult * (meanSpd + sh.turb * fluct));
+    const dir = (w.dirDeg + sh.deflDeg) * DEG;
+    sim.windVec = { E: -Math.sin(dir) * spd, N: -Math.cos(dir) * spd };
+  } else {
+    sim.windVec = { E: w.E, N: w.N };
+  }
   const inp = { wheelCmd: sim.wheelCmd, heldTime: (now - sim.heldSince) / 1000, throttleIndex: sim.throttleIndex, wind: sim.windVec, extra: extraForces };
   const before = sim.lastContact;
   sim.s = stepBoat(sim.s, inp, P, H);
@@ -179,6 +198,21 @@ function draw() {
       for (const poly of sc.water) drawPoly(poly, '#6f9cb8', 'rgba(40,80,120,0.6)');
     } else {
       for (const poly of sc.water) drawPoly(poly, 'rgba(80,160,230,0.10)', 'rgba(40,120,200,0.8)');
+    }
+  }
+  // shelter field overlay (calibration aid)
+  if (sim.shelter && sim.showField) {
+    const F = sim.shelter, w2 = sim.wind.state;
+    const bin = Math.round((((w2.dirDeg % 360) + 360) % 360) / (360 / F.nDirs)) % F.nDirs;
+    const plane = F.speed[bin], sc2 = F.maxMult / 255;
+    for (let j = 0; j < F.ny; j++) for (let i = 0; i < F.nx; i++) {
+      const k = j * F.nx + i; if (F.solid[k]) continue;
+      const m = plane[k] * sc2;
+      if (Math.abs(m - 1) < 0.06) continue;
+      const [px, py] = w2c(F.x0 + i * F.dx, F.y0 + j * F.dx);
+      ctx.fillStyle = m < 1 ? `rgba(20,40,90,${0.45 * (1 - m)})` : `rgba(255,80,0,${0.45 * Math.min(1, m - 1)})`;
+      const sz = F.dx * v.s;
+      ctx.fillRect(px - sz / 2, py - sz / 2, sz, sz);
     }
   }
   // docks / land
@@ -248,7 +282,10 @@ function drawHUD() {
   $('hSpeed').textContent = `${sog.toFixed(1)} kn`;
   $('hHdg').textContent = `${hdg.toFixed(0).padStart(3, '0')}°`;
   $('hRpm').textContent = `${Math.abs(rpm)} rpm ${rpm > 20 ? 'ahead' : rpm < -20 ? 'astern' : 'neutral'} (set ${rpmSetpoint(sim.throttleIndex, P)})`;
-  $('hWind').textContent = `${(w.speed / KN).toFixed(1)} kn from ${w.dirDeg.toFixed(0)}°`;
+  const local = Math.hypot(sim.windVec.E, sim.windVec.N) / KN;
+  $('hWind').textContent = sim.shelter
+    ? `${local.toFixed(1)} kn local (${(w.speed / KN).toFixed(1)} free) from ${((w.dirDeg + sim.shelterAt.deflDeg) % 360 + 360) % 360 | 0}°`
+    : `${(w.speed / KN).toFixed(1)} kn from ${w.dirDeg.toFixed(0)}°`;
   $('hTime').textContent = `${sim.t.toFixed(0)} s   hits ${sim.hits}${sim.paused ? '   PAUSED' : ''}`;
   const rud = $('hRudder'); rud.style.transform = `translateX(${(s[6] / P.rudder.deltaMax) * 60}px)`;
   $('hRudTxt').textContent = `${(Math.abs(s[6]) / DEG).toFixed(0)}° ${s[6] > 0.005 ? 'stbd' : s[6] < -0.005 ? 'port' : ''}`;
@@ -313,7 +350,14 @@ function setMode(m) { sim.mode = m; sim.draft = []; $('modeTxt').textContent = {
 function polyArea(poly) { return Math.abs(poly.reduce((a, [x, y], i) => { const [x2, y2] = poly[(i + 1) % poly.length]; return a + x * y2 - x2 * y; }, 0) / 2); }
 function finishDock(kind = 'land') {
   if (sim.draft.length >= 3 && polyArea(sim.draft) < 0.5) { alert('That polygon has almost no area (points nearly on a line) — it would never be hit. Not added.'); sim.draft = []; return; }
-  if (sim.draft.length >= 3) (kind === 'water' ? sim.scenario.water : sim.scenario.docks).push(sim.draft.slice());
+  if (sim.draft.length >= 3) {
+    if (kind === 'water') sim.scenario.water.push(sim.draft.slice());
+    else {
+      const h = parseFloat(prompt('Height of this structure above the water, in metres (0 = flat dock, no wind shadow):', '0'));
+      sim.scenario.docks.push(sim.draft.slice());
+      sim.scenario.heights.push(Number.isFinite(h) && h > 0 ? h : 0);
+    }
+  }
   sim.draft = []; sim.undoStack.push(kind);
 }
 function finishScale() {
@@ -325,6 +369,7 @@ function finishScale() {
     sc.widthM /= f; sc.heightM /= f; sc.pxPerM = sim.bgImg ? sim.bgImg.width / sc.widthM : null;
     sc.docks = sc.docks.map(p => p.map(([E, N]) => [E / f, N / f]));
     sc.water = sc.water.map(p => p.map(([E, N]) => [E / f, N / f]));
+    sc.shelter = null; sim.shelter = null;   // grid is in metres; rescaling invalidates it
     sc.start = { E: sc.start.E / f, N: sc.start.N / f, psi: sc.start.psi };
     resetBoat(); fitView();
   }
@@ -343,20 +388,36 @@ $('bFinishLand').onclick = () => { if (sim.mode === 'dock') finishDock('land'); 
 $('bFinishWater').onclick = () => { if (sim.mode === 'dock') finishDock('water'); setMode('sail'); };
 $('bUndo').onclick = () => {
   if (sim.draft.length) { sim.draft.pop(); return; }
-  const k = sim.undoStack.pop(); if (k === 'water') sim.scenario.water.pop(); else sim.scenario.docks.pop();
+  const k = sim.undoStack.pop();
+  if (k === 'water') sim.scenario.water.pop(); else { sim.scenario.docks.pop(); sim.scenario.heights.pop(); }
 };
-$('bClearDocks').onclick = () => { sim.scenario.docks = []; sim.scenario.water = []; sim.undoStack = []; };
+$('bClearDocks').onclick = () => { sim.scenario.docks = []; sim.scenario.heights = []; sim.scenario.water = []; sim.undoStack = []; sim.scenario.shelter = null; sim.shelter = null; };
 $('bScale').onclick = () => setMode('scale');
+$('bShowField').onclick = () => { sim.showField = !sim.showField; $('bShowField').textContent = sim.showField ? 'Hide wind field' : 'Show wind field'; };
+$('bBuildShelter').onclick = () => {
+  const sc = sim.scenario;
+  const obstacles = sc.docks.map((poly, i) => ({ poly, height: sc.heights[i] || 0 })).filter(o => o.height > 0);
+  if (!obstacles.length) { alert('No structures have a height yet. Draw a polygon and give it a height above 0, or set heights when finishing one.'); return; }
+  const t0 = performance.now();
+  const dx = parseFloat($('shelterDx').value) || SHELTER_DEFAULTS.dx;
+  sim.shelter = buildShelterField(obstacles, { x0: 0, y0: 0, x1: sc.widthM, y1: sc.heightM }, { dx });
+  sc.shelter = serializeShelter(sim.shelter);
+  const kb = Math.round(JSON.stringify(sc.shelter).length / 1024);
+  alert(`Wind field built from ${obstacles.length} structure(s) in ${((performance.now() - t0) / 1000).toFixed(1)} s.\n${sim.shelter.nx}x${sim.shelter.ny} cells, ${sim.shelter.nDirs} directions, ~${kb} kB in the exported JSON.`);
+};
 $('bPlace').onclick = () => setMode('place');
 function loadScenario(sc) {
   sc.water ||= []; sc.docks ||= [];
+  sc.heights ||= sc.docks.map(() => 0);
+  while (sc.heights.length < sc.docks.length) sc.heights.push(0);
   sim.scenario = sc; sim.bgImg = null; sim.undoStack = [];
+  sim.shelter = sc.shelter ? deserializeShelter(sc.shelter) : null;
   if (sc.image) { const img = new Image(); img.onload = () => { sim.bgImg = img; }; img.src = sc.image; }
   resetBoat(); fitView();
 }
 function loadMapImage(img) {
   sim.bgImg = img;
-  const sc = sim.scenario; sc.image = img.src; sc.docks = []; sc.water = []; sim.undoStack = [];
+  const sc = sim.scenario; sc.image = img.src; sc.docks = []; sc.heights = []; sc.water = []; sc.shelter = null; sim.shelter = null; sim.undoStack = [];
   sc.pxPerM = 1;                                 // provisional: 1 px = 1 m until scaled
   sc.widthM = img.width; sc.heightM = img.height; sc.start = { E: img.width / 2, N: img.height / 2, psi: 0 };
   resetBoat(); fitView();
