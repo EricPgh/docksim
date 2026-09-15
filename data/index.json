@@ -1,9 +1,11 @@
 {
   "comment": "Scenario catalogue. GitHub Pages cannot list a directory, so add an entry here for each JSON you drop in data/. 'file' is relative to this file.",
   "scenarios": [
+    { "name": "Edgewater", "file": "edgewater.json", "note": "" },
     { "name": "Alo Wai", "file": "alowai.json", "note": "immense" },
     { "name": "North Coast Obstacles", "file": "northcoast_filled.json", "note": "watch the leeward rocks" },
     { "name": "North Coast with Wind", "file": "northcoast_wind.json", "note": "wind field applied" },
-    { "name": "North Coast Empty", "file": "northcoast_empty.json", "note": "often slipped boats don't appear in this one" }
+    { "name": "North Coast Empty", "file": "northcoast_empty.json", "note": "often slipped boats don't appear in this one" },
+    { "name": "default", "file": "default-marina.json", "note": "" }
   ]
 }
