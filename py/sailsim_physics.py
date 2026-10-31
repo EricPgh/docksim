@@ -13,7 +13,8 @@ import numpy as np
 RHO_W, RHO_A = 1025.0, 1.225
 DEG, KN = np.pi / 180, 0.514444
 
-P = dict(
+JEANNEAU_36 = dict(
+    name='Jeanneau Sun Odyssey 36i',
     LOA=10.94, LWL=9.84, beam=3.59, mass=6200.0, kzz=0.25 * 10.94,
     addedMass=dict(ax=0.05, ay=0.55, az=0.35, munk=1.0),
     hull=dict(T0=0.60, kQuad=110.0, kLin=60.0, cdCross=1.0, nStrips=24),
@@ -29,6 +30,33 @@ P = dict(
                       [-4.9, 1.20], [-5.47, 0.95], [-5.47, -0.95], [-4.9, -1.20], [-3.4, -1.55],
                       [-1.4, -1.76], [1.2, -1.78], [3.2, -1.40], [4.6, -0.75]]),
 )
+# Union 32 (Ted Brewer cutter).  Mirrors UNION_32 in src/physics.js; the
+# fixture test checks the two agree.  Near-full keel (distributed), keel-hung
+# rudder, partial keel with a subtle Brewer bite (depth profile), Kiwiprop in an
+# aperture just forward of the rudder, anchor on the bow roller, no bowsprit.
+UNION_32 = dict(
+    name='Union 32 (Brewer cutter)',
+    LOA=9.68, LWL=8.31, beam=3.30, mass=5900.0, kzz=0.26 * 9.68,
+    addedMass=dict(ax=0.06, ay=0.90, az=0.70, munk=1.0),
+    hull=dict(T0=0.52, kQuad=60.0, kLin=70.0, cdCross=1.0, nStrips=24, kWave=90.0),
+    keel=dict(area=4.51, ar=0.4, x=-0.6, cd0=0.012, e=0.6, alphaStall=30 * DEG, cn=1.3,
+              nSeg=27, xFwd=1.753, xAft=-3.65,
+              profile=[[1.753, 0], [0.71, 0.965], [0.35, 0.954], [0, 0.95], [-0.65, 0.963], [-1.3, 1.001], [-2.1, 0.974], [-2.5, 0.798], [-2.9, 0.985], [-3.2, 1.0], [-3.25, 0.553], [-3.65, 0.581]]),
+    rudder=dict(area=0.62, ar=1.7, x=-3.95, cd0=0.012, e=0.7, alphaStall=20 * DEG, cn=1.3,
+                eff=0.6, deltaMax=35 * DEG, span=1.03),
+    wheel=dict(lockToLockTurns=2.5, rateMin=90 * DEG, rateMax=360 * DEG, rampTime=1.0),
+    prop=dict(D=0.38, Kt0=0.32, J0=0.85, astern=0.85, gearAhead=2.4, gearAstern=2.4,
+              x=-3.45, wake=0.25, slipFrac=0.65, kR=0.50, tau=0.9,
+              walk=dict(hand=1, ahead=0.03, astern=0.15)),
+    engine=dict(ahead=[0, 800, 1200, 1800, 2400, 2800], astern=[0, 800, 1200, 1800, 2400]),
+    windage=dict(areaFrontal=6.5, areaLateral=17.0, cx=0.75, cy=0.95, xCE=0.8),
+    stemWLX=4.155, stemDeckX=5.075, mastStepX=0.924, spriteCentreX=0.235,
+    outline=np.array([[5.525, 0.06], [5.075, 0.1], [4.435, 0.7], [3.235, 1.25], [1.435, 1.6], [-0.265, 1.65], [-2.265, 1.55], [-3.765, 1.25], [-4.605, 0.95], [-4.605, -0.95], [-3.765, -1.25], [-2.265, -1.55], [-0.265, -1.65], [1.435, -1.6], [3.235, -1.25], [4.435, -0.7], [5.075, -0.1], [5.525, -0.06]]),
+)
+VESSELS = dict(union32=UNION_32, jeanneau36=JEANNEAU_36)
+DEFAULT_VESSEL = 'union32'
+P = VESSELS[DEFAULT_VESSEL]      # default for functions called without an explicit P
+
 CONTACT = dict(k=25000.0, c=6000.0, mu=0.4, sampleSpacing=0.3)
 
 
@@ -52,7 +80,7 @@ def foil_coeffs(alpha, f):
     cl_fp, cd_fp = f['cn'] * sa * ca, f['cn'] * sa * sa
     w = np.clip((np.abs(a) - f['alphaStall']) / (0.5 * f['alphaStall']), 0, 1)
     w = w * w * (3 - 2 * w)
-    return (1 - w) * cl_lin + w * cl_fp, (1 - w) * cd_lin + w * cd_fp
+    return f.get('eff', 1.0) * ((1 - w) * cl_lin + w * cl_fp), (1 - w) * cd_lin + w * cd_fp
 
 
 def foil_force(uIn, vIn, delta, f, area):
@@ -77,13 +105,54 @@ def hull_forces(u, v, r, P=P):
     vl = v[None, :] + x[:, None] * r[None, :]                   # (Ns, N)
     dY = -0.5 * RHO_W * H['cdCross'] * T[:, None] * np.abs(vl) * vl * dx
     X = -(H['kQuad'] * u * np.abs(u) + H['kLin'] * u)
+    if H.get('kWave'):
+        uHull = 1.34 * np.sqrt(L / 0.3048) * KN
+        X = X - H['kWave'] * u * np.abs(u) * (u / uHull) ** 4
     return X, dY.sum(0), (x[:, None] * dY).sum(0)
+
+
+def keel_depth(profile, x):
+    if x >= profile[0][0] or x <= profile[-1][0]:
+        return 0.0
+    for (x0, d0), (x1, d1) in zip(profile[:-1], profile[1:]):
+        if x1 <= x <= x0:
+            return d0 + (d1 - d0) * (x0 - x) / (x0 - x1)
+    return 0.0
 
 
 def keel_forces(u, v, r, P=P):
     k = P['keel']
+    if not k.get('nSeg'):
+        X, Y = foil_force(u, v + k['x'] * r, 0.0, k, k['area'])
+        return X, Y, k['x'] * Y
+    # long keel: strips from xFwd to xAft, each with its own inflow v + x_i r;
+    # area d(x_i) dx from the depth profile if present, else uniform A/n
+    X = np.zeros_like(u); Y = np.zeros_like(u); Nz = np.zeros_like(u)
+    n = k['nSeg']; dx = (k['xFwd'] - k['xAft']) / n
+    for i in range(n):
+        x = k['xFwd'] - (i + 0.5) * dx
+        dA = keel_depth(k['profile'], x) * dx if k.get('profile') else k['area'] / n
+        if dA <= 0:
+            continue
+        Xi, Yi = foil_force(u, v + x * r, 0.0, k, dA)
+        X = X + Xi; Y = Y + Yi; Nz = Nz + x * Yi
+    return X, Y, Nz
+
+
+def skeg_forces(u, v, r, P=P):
+    k = P.get('skeg')
+    if not k:
+        z = np.zeros_like(u); return z, z, z
     X, Y = foil_force(u, v + k['x'] * r, 0.0, k, k['area'])
     return X, Y, k['x'] * Y
+
+
+def prop_walk(T, P=P):
+    w = P['prop'].get('walk')
+    if not w:
+        z = np.zeros_like(T); return z, z
+    Y = w['hand'] * np.where(T > 0, w['ahead'], w['astern']) * T
+    return Y, P['prop']['x'] * Y
 
 
 # ------------------------------------------------------------------ propeller, rudder
@@ -237,15 +306,17 @@ def derivative(S, inp, P=P, extra=None):
     psi, u, v, r, delta, n = S[2], S[3], S[4], S[5], S[6], S[7]
     Xh, Yh, Nh = hull_forces(u, v, r, P)
     Xk, Yk, Nk = keel_forces(u, v, r, P)
+    Xs, Ys, Ns = skeg_forces(u, v, r, P)
     T, _ = prop_thrust(u, n, P)
+    Yp, Np = prop_walk(T, P)
     Xr, Yr, Nr = rudder_forces(u, v, r, delta, T, P)
     Xw, Yw, Nw = wind_forces(S, inp['wE'], inp['wN'], P)
     Xe = Ye = Ne = 0.0
     if extra is not None:
         Xe, Ye, Ne = extra(S)
-    X = Xh + Xk + T + Xr + Xw + Xe
-    Y = Yh + Yk + Yr + Yw + Ye
-    Nz = Nh + Nk + Nr + Nw + Ne
+    X = Xh + Xk + Xs + T + Xr + Xw + Xe
+    Y = Yh + Yk + Ys + Yp + Yr + Yw + Ye
+    Nz = Nh + Nk + Ns + Np + Nr + Nw + Ne
     du = (X + D['my'] * v * r) / D['mx']
     dv = (Y - D['mx'] * u * r) / D['my']
     dr = (Nz - P['addedMass']['munk'] * (D['my'] - D['mx']) * u * v) / D['Iz']

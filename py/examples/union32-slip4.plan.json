@@ -1,0 +1,61 @@
+{
+ "scenario": "../data/default-marina.json",
+ "vessel": "union32",
+ "wind_kn": 12.0,
+ "wind_from_deg": 200.0,
+ "start": [
+  65.0,
+  45.0,
+  90.0
+ ],
+ "goal": [
+  54.5,
+  9.0,
+  180.0
+ ],
+ "arrival": {
+  "t": 46.675000000000004,
+  "pos_err_m": 0.6661256590560664,
+  "head_err_deg": 6.330897719496249,
+  "speed_ms": 0.06336695359087195,
+  "contact": 0.001297786892232189
+ },
+ "segments": [
+  {
+   "duration_s": 1.856825987662053,
+   "rudder_deg": 7.305326239720321,
+   "throttle_index": 0,
+   "rpm": 0
+  },
+  {
+   "duration_s": 13.967506451473627,
+   "rudder_deg": 24.10449762874088,
+   "throttle_index": 5,
+   "rpm": 2800
+  },
+  {
+   "duration_s": 3.38822173509391,
+   "rudder_deg": -24.39703293564126,
+   "throttle_index": 1,
+   "rpm": 800
+  },
+  {
+   "duration_s": 6.354860886162188,
+   "rudder_deg": -0.4199166463286079,
+   "throttle_index": 4,
+   "rpm": 2400
+  },
+  {
+   "duration_s": 25.337175008687655,
+   "rudder_deg": -19.98300455217203,
+   "throttle_index": -1,
+   "rpm": -800
+  },
+  {
+   "duration_s": 3.415023240851159,
+   "rudder_deg": 19.041827038425605,
+   "throttle_index": 2,
+   "rpm": 1200
+  }
+ ]
+}

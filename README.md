@@ -5,7 +5,7 @@ keel, rudder (with prop wash), propeller and windage models, RK4 integration,
 stochastic wind, and fender-style dock contact. Physics is a pure ES module
 with no DOM dependence; the same file runs in Node (tests) and the browser.
 
-    npm test              # 18 unit tests: every force model, wind, contact, RK4
+    npm test              # 38 unit tests: force models, both vessels, wind, shelter, contact, RK4
     npm run serve         # then open http://localhost:8000
 
 Files
@@ -17,6 +17,11 @@ Files
     index.html         page, HUD, side panel, on-screen buttons
     test/              node --test
     MODEL.md           derivation of every equation and its calibration
+
+Vessel: the Boat panel selects the Union 32 (default) or the Jeanneau Sun
+Odyssey 36i; the choice is saved in the scenario JSON. Add a boat by adding a
+parameter object to `VESSELS` in src/physics.js (and py/sailsim_physics.py;
+the fixture test catches any disagreement).
 
 Controls: Z / X wheel to port / starboard (hold to spin faster; rudder stays
 where you leave it, C centres). Up / Down step the throttle through

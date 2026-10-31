@@ -1,10 +1,12 @@
 // app.js — canvas renderer, keyboard/touch input, scenario editor.
-import { JEANNEAU_36, DEG, KN, stepBoat, initialState, clampThrottle, rpmSetpoint, sumForces, propThrust, shaftToEngine } from './physics.js';
+import { VESSELS, DEFAULT_VESSEL, DEG, KN, stepBoat, initialState, clampThrottle, rpmSetpoint, sumForces, propThrust, shaftToEngine } from './physics.js';
 import { WindModel, WIND_PRESETS, mulberry32 } from './wind.js';
 import { contactForces, sampleOutline } from './collision.js';
 import { buildShelterField, sampleShelter, serializeShelter, deserializeShelter, SHELTER_DEFAULTS } from './shelter.js';
 
-const P = JEANNEAU_36;
+// Active vessel.  `let`, not `const`: every function reads P at call time, so
+// swapping the object swaps the boat.  hullPts and the sprite length follow.
+let P = VESSELS[DEFAULT_VESSEL], vesselId = DEFAULT_VESSEL;
 const H = 0.01;                           // physics step [s]
 // Tolerant lookup: a missing element logs a warning and returns a detached
 // stand-in instead of null, so one stale index.html can't abort the module.
@@ -66,6 +68,16 @@ sim.checkContact = () => {
   return c;
 };
 
+function setVessel(id, { reset = true } = {}) {
+  if (!VESSELS[id]) id = DEFAULT_VESSEL;
+  vesselId = id; P = VESSELS[id];
+  sim.hullPts = sampleOutline(P.outline);
+  if (!sim.sprite) sim.spriteLengthM = P.LOA;
+  sim.scenario.vessel = id;
+  sim.throttleIndex = clampThrottle(sim.throttleIndex, P);
+  const sel = document.getElementById('vesselSel'); if (sel) sel.value = id;
+  if (reset) resetBoat();
+}
 function resetBoat() {
   const st = sim.scenario.start;
   sim.s = initialState(st.E, st.N, st.psi);
@@ -245,7 +257,8 @@ function drawBoat() {
   }
   if (sim.sprite) {
     const hpx = sim.spriteLengthM * v.s, wpx = hpx * sim.sprite.width / sim.sprite.height;
-    ctx.drawImage(sim.sprite, -wpx / 2, -hpx / 2, wpx, hpx);
+    const off = (P.spriteCentreX ?? 0) * v.s;          // hull centre is forward of the origin
+    ctx.drawImage(sim.sprite, -wpx / 2, -hpx / 2 - off, wpx, hpx);
   } else {
     ctx.beginPath(); P.outline.forEach(([bx, by], i) => { const px = by * v.s, py = -bx * v.s; i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); });
     ctx.closePath(); ctx.fillStyle = '#f4f0e6'; ctx.fill(); ctx.strokeStyle = '#333'; ctx.lineWidth = 1.5; ctx.stroke();
@@ -412,6 +425,7 @@ function loadScenario(sc) {
   while (sc.heights.length < sc.docks.length) sc.heights.push(0);
   sim.scenario = sc; sim.bgImg = null; sim.undoStack = [];
   sim.shelter = sc.shelter ? deserializeShelter(sc.shelter) : null;
+  setVessel(sc.vessel || DEFAULT_VESSEL, { reset: false });
   if (sc.image) { const img = new Image(); img.onload = () => { sim.bgImg = img; }; img.src = sc.image; }
   resetBoat(); fitView();
 }
@@ -491,7 +505,13 @@ $('bPanel').onclick = () => $('panel').classList.toggle('hidden');
 
 // ---------------------------------------------------------------- main loop
 function resize() { canvas.width = innerWidth; canvas.height = innerHeight; fitView(); }
-addEventListener('resize', resize); resize(); resetBoat();
+{
+  const sel = $('vesselSel');
+  sel.innerHTML = Object.entries(VESSELS).map(([id, v]) => `<option value="${id}">${v.name}</option>`).join('');
+  sel.value = vesselId;
+  sel.addEventListener('change', e => setVessel(e.target.value));
+}
+addEventListener('resize', resize); resize(); setVessel(DEFAULT_VESSEL);
 let last = performance.now(), acc = 0;
 function frame(now) {
   let dt = Math.min(0.1, (now - last) / 1000); last = now;

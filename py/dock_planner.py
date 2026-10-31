@@ -36,11 +36,25 @@ import argparse, base64, json, os, sys, time
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from sailsim_physics import (P, DEG, KN, derived, initial_state, rk4_step, rpm_setpoint,
+from sailsim_physics import (VESSELS, DEFAULT_VESSEL, DEG, KN, derived, initial_state, rk4_step, rpm_setpoint,
                              contact_forces, sample_outline, shaft_to_engine, prop_thrust)
 
-DMAX = P['rudder']['deltaMax']
-THR_MIN, THR_MAX = -(len(P['engine']['astern']) - 1), len(P['engine']['ahead']) - 1
+# Vessel-dependent globals.  Set by set_vessel(); every physics call below passes
+# P explicitly, because the physics module's default arguments are bound at
+# import time and would silently keep the default boat.
+P = DMAX = THR_MIN = THR_MAX = None
+
+
+def set_vessel(vid):
+    global P, DMAX, THR_MIN, THR_MAX
+    if vid not in VESSELS:
+        raise SystemExit(f"unknown vessel '{vid}'; choose from {', '.join(VESSELS)}")
+    P = VESSELS[vid]
+    DMAX = P['rudder']['deltaMax']
+    THR_MIN, THR_MAX = -(len(P['engine']['astern']) - 1), len(P['engine']['ahead']) - 1
+
+
+set_vessel(DEFAULT_VESSEL)
 
 
 # ----------------------------------------------------------------------------- scenario
@@ -123,7 +137,7 @@ class Rollout:
             t_in = t - seg_start[idx, seg]
             rate = rr['rudderRateMin'] + (rr['rudderRateMax'] - rr['rudderRateMin']) * np.minimum(1.0, t_in / P['wheel']['rampTime'])
             rudder_rate = np.clip((target - S[6]) / 0.15, -rate, rate)
-            rpm = rpm_setpoint(thr[idx, seg])
+            rpm = rpm_setpoint(thr[idx, seg], P)
             wE, wN = self.wind_at(S)
             # contact evaluated once per step and held across the RK4 stages
             Xc, Yc, Nc, pk = contact_forces(S, self.hull, self.scen['docks'], self.scen['water'])
@@ -189,6 +203,18 @@ def plan(scen, args, log=print):
     K, tmax = args.segments, args.tmax
     mu = sigma = None
     best_theta = None
+    if args.init:
+        # Seed the search from an existing plan (any vessel's).  The schedule is
+        # a prior, not a constraint: sigma is wide enough for the search to
+        # rework timing, rudder and throttle for this boat.
+        seg = json.load(open(args.init))['segments']
+        mu = np.array([[g['duration_s'], g['rudder_deg'] * DEG, g['throttle_index']] for g in seg])
+        if len(mu) < K:
+            mu = np.vstack([mu, np.tile([6.0, 0.0, 0.0], (K - len(mu), 1))])
+        K = len(mu)
+        mu[:, 2] = np.clip(mu[:, 2], THR_MIN, THR_MAX)
+        sigma = np.tile(np.array([3.0, 10 * DEG, 1.0]), (K, 1))
+        log(f"seeded from {args.init} ({len(seg)} segments)")
     for round_ in range(args.max_rounds):
         log(f"\n=== search round {round_ + 1}: K={K} segments, horizon {tmax:.0f} s, dt={args.plan_dt}, pop={args.pop} ===")
         ro = Rollout(scen, args.wind[0], args.wind[1], args.start, args.goal, args.plan_dt, tmax, hull_spacing=0.6)
@@ -226,7 +252,7 @@ def narrative(sched, t_end):
     for i, (d, g, h) in enumerate(zip(dur, tgt, thr)):
         if t >= t_end:
             break
-        rpm = int(rpm_setpoint(np.array([h]))[0])
+        rpm = int(rpm_setpoint(np.array([h]), P)[0])
         eng = 'neutral' if rpm == 0 else f"{abs(rpm)} rpm {'ahead' if rpm > 0 else 'astern'}"
         rd = g / DEG
         wheel = 'wheel amidships' if abs(rd) < 2 else f"wheel {abs(rd):.0f}° to {'starboard' if rd > 0 else 'port'}"
@@ -239,12 +265,12 @@ def narrative(sched, t_end):
 
 def export_plan(path, args, sched, arr):
     dur, tgt, thr = (x[0] for x in sched)
-    json.dump(dict(scenario=args.scenario, wind_kn=args.wind[0], wind_from_deg=args.wind[1],
+    json.dump(dict(scenario=args.scenario, vessel=args.vessel, wind_kn=args.wind[0], wind_from_deg=args.wind[1],
                    start=args.start, goal=args.goal,
                    arrival=dict(t=float(arr['t']), pos_err_m=float(arr['pos']), head_err_deg=float(arr['head']),
                                 speed_ms=float(arr['speed']), contact=float(arr['contact'])),
                    segments=[dict(duration_s=float(d), rudder_deg=float(g / DEG), throttle_index=int(h),
-                                  rpm=int(rpm_setpoint(np.array([h]))[0])) for d, g, h in zip(dur, tgt, thr)]),
+                                  rpm=int(rpm_setpoint(np.array([h]), P)[0])) for d, g, h in zip(dur, tgt, thr)]),
               open(path, 'w'), indent=1)
 
 
@@ -285,7 +311,7 @@ def render(scen, hist, t_end, args, ro):
     wash, = ax.plot([], [], color='white', lw=2, alpha=0.6)
     hud = ax.text(0.01, 0.99, '', transform=ax.transAxes, va='top', ha='left', fontsize=9, family='monospace',
                   bbox=dict(fc='#f4f0e6', ec='#9a8b6c', alpha=0.9))
-    ax.set_title(f"Docking plan — {os.path.basename(args.scenario)}", fontsize=11)
+    ax.set_title(f"Docking plan — {P['name']} — {os.path.basename(args.scenario)}", fontsize=11)
 
     def frame(k):
         s = hist[k]
@@ -295,12 +321,12 @@ def render(scen, hist, t_end, args, ro):
         rx = P['rudder']['x']
         rud_pts = np.array([[rx, 0], [rx - 0.9 * np.cos(delta), 0.9 * np.sin(delta)]])
         rw = body_to_world(rud_pts, E, N, psi); rudder.set_data(rw[:, 0], rw[:, 1])
-        rpm = float(shaft_to_engine(np.array([n]))[0])
+        rpm = float(shaft_to_engine(np.array([n]), P)[0])
         f = rpm / P['engine']['ahead'][-1]
         L = 4.0 * abs(f)
         c = np.array([[-0.3, 0], [0.3, 0], [0.3, L if f > 0 else -L], [-0.3, L if f > 0 else -L]])[:, ::-1]  # (x fwd, y stbd)
         candle.set_xy(body_to_world(c, E, N, psi)); candle.set_facecolor('#28b446' if f >= 0 else '#d22828')
-        T, _ = prop_thrust(np.array([u]), np.array([n]))
+        T, _ = prop_thrust(np.array([u]), np.array([n]), P)
         if abs(T[0]) > 50:
             Lw = min(6, abs(T[0]) / 400) * (1 if T[0] > 0 else -1)
             wp = body_to_world(np.array([[P['prop']['x'], 0], [P['prop']['x'] - Lw, 0]]), E, N, psi)
@@ -346,6 +372,7 @@ def main():
     ap.add_argument('--start', nargs=3, type=float, metavar=('E', 'N', 'HDG'), required=True)
     ap.add_argument('--goal', nargs=3, type=float, metavar=('E', 'N', 'HDG'), required=True)
     ap.add_argument('--out', default='docking.mp4')
+    ap.add_argument('--vessel', default=None, help=f"one of {', '.join(VESSELS)}; default: the scenario's, else {DEFAULT_VESSEL}")
     ap.add_argument('--segments', type=int, default=6)
     ap.add_argument('--pop', type=int, default=160)
     ap.add_argument('--iters', type=int, default=30)
@@ -362,10 +389,14 @@ def main():
     ap.add_argument('--dpi', type=int, default=90)
     ap.add_argument('--seed', type=int, default=1)
     ap.add_argument('--no-movie', action='store_true')
+    ap.add_argument('--init', metavar='PLAN_JSON', help='seed the search from an existing plan (any vessel)')
     ap.add_argument('--replay', metavar='PLAN_JSON', help='skip planning; simulate and render this plan (edit it by hand to try variations)')
     args = ap.parse_args()
 
     scen = load_scenario(args.scenario)
+    args.vessel = args.vessel or scen['raw'].get('vessel') or DEFAULT_VESSEL
+    set_vessel(args.vessel)
+    print(f"vessel: {P['name']}")
     print(f"scenario {args.scenario}: {len(scen['docks'])} land polygons, {len(scen['water'])} water polygons, "
           f"shelter field {'present' if scen['shelter'] else 'absent'}")
     t0 = time.time()

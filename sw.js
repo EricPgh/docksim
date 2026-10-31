@@ -1,6 +1,6 @@
 // Service worker: cache-first for the app shell so the iPad runs offline.
 // Bump VERSION whenever any file changes so clients pick up the new build.
-const VERSION = 'sailsim-v3';
+const VERSION = 'sailsim-v7';
 const SHELL = ['./', './index.html', './src/app.js', './src/physics.js', './src/wind.js',
                './src/collision.js', './src/shelter.js', './manifest.webmanifest', './icon.svg', './data/index.json'];
 self.addEventListener('install', e => {

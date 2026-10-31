@@ -64,6 +64,15 @@ Surge: R = k_Q u|u| + k_L u. k_Q is calibrated so R(3.1 m/s) ≈ 1.25 kN, i.e.
 resistance/displacement ≈ 2 % at 6 kn, which with the propeller below gives
 ~5 kn at 2000 rpm and ~6.4 kn at 2500 rpm (tests).
 
+Wave-making (optional, `kWave`): a pure quadratic calibrated at top speed
+over-predicts resistance at docking speeds, because real resistance turns up
+steeply near hull speed. The added term
+
+    R_w = k_W u|u| (u / u_hull)^4,   u_hull = 1.34 √LWL[ft]  kn
+
+is negligible below ~4 kn and dominant near hull speed (unit test: R/u² rises
+with speed). Used for the Union 32 (u_hull = 7.0 kn); zero for the Jeanneau.
+
 Sway/yaw: strip theory with cross-flow drag. Sectional draft T(x) = T₀(1 − (2x/L)²);
 local sway velocity v_l(x) = v + x r;
 
@@ -75,8 +84,24 @@ hard-over pivot at 1500 rpm of roughly 10°/s with a ~6 m radius; this is the
 least-grounded pair of numbers in the model and the first thing to tune against
 a real boat.
 
-Keel: foil of §2 at x_k with δ = 0; contributes restoring side force,
-induced drag, and post-stall cross-flow drag automatically.
+Keel depth profile (optional, `keel.profile`): stations (x, d) with d the
+depth BELOW the canoe body, so canoe(x) + d(x) is the keel bottom and the
+canoe body (hull.T0) and keel never double-count lateral area. Strip area is
+d(x_i) Δx, so a Brewer bite is simply a stretch of reduced d. Stations must be
+dense enough to follow the canoe curvature, or canoe + d overshoots the draft
+between them; a unit test checks the maximum of canoe + d against 1.47 m.
+
+Keel: foil of §2 with δ = 0; contributes restoring side force, induced drag,
+and post-stall cross-flow drag automatically. A fin keel is concentrated at
+x_k. A long keel (`nSeg` > 0) is distributed over n strips of area A/n from
+x_fwd to x_aft, each seeing its own inflow:
+
+    dY_i = foil(u, v + x_i r),   N_keel = Σ x_i dY_i
+
+Lumping a 5.8 m keel at one point resists sideslip but gives almost no yaw
+damping (moment arm ~0.6 m); with the aperture wash on the rudder that made the
+Union 32 pivot at 14 °/s on a 1.9 m radius. Distributing it is what restores
+the long keel's yaw damping (unit test: >10x the lumped value).
 
 ## 4. Propeller
 
@@ -96,6 +121,20 @@ efficiency is a separate factor of 0.85, so astern bollard thrust is ~45 % of
 ahead (test). First-order rpm lag τ = 0.8 s.
 No prop walk (as requested — it would be one added term Y_pw ∝ n|n| at x_p).
 
+## 4a. Prop walk (vessels that have it)
+
+    Y_pw = hand · k · T,   k = k_ahead (T > 0),  k_astern (T < 0),   N_pw = x_p Y_pw
+
+hand = +1 for a right-hand prop (clockwise from astern when going ahead): ahead
+the stern walks weakly to starboard; astern it walks strongly to port, bow to
+starboard. The Jeanneau has none (feathering prop, observed on the boat). The
+Union 32 uses k_astern = 0.25, which is FITTED to give ~15° of swing in 12 s
+backing from rest at 1800 rpm. That is above the 5–15 % side-force fractions
+usually quoted for open props; the point force at the propeller stands in for
+wash striking the deadwood, which this model cannot represent directly. It is
+the first coefficient to calibrate on the real boat: back off at fixed rpm,
+wheel centred, and time the heading change.
+
 ## 5. Rudder in the slipstream
 
 Actuator-disc far-wake velocity for ahead thrust
@@ -107,6 +146,20 @@ u on the rest; both panels see v_in = v + x_r r. With astern thrust the wash
 goes forward and the rudder sees only u — hence no steering from rest in
 reverse until sternway builds, and a "kick ahead" steers even with sternway.
 Both behaviours are tests.
+
+Actuator-disc theory gives the axial velocity along the slipstream as
+u(x) = u_A + ½(u_W − u_A)(1 + x/√(x² + R²)). For the Union 32 (rudder ~0.45 m
+behind a 0.19 m-radius prop) the bracket is ~0.92; for the Jeanneau ~0.99.
+Yet the Jeanneau's k_R was FITTED to 0.5 against pivot-rate targets, so the
+fit is absorbing losses the theory ignores (hull wake, blockage, slipstream
+contraction past the blade). The Union 32 therefore carries the same fitted
+0.5 rather than the theoretical value; its closer coupling shows up through
+the larger slipstream fraction instead (0.65 of the blade in the wash).
+
+A keel-hung or skeg-hung rudder is a flap behind a fixed foil, so it generates less lift
+than an all-moving rudder of the same area: C_L is scaled by `rudder.eff`
+(0.7 for the Union 32). The skeg itself is a fixed foil (`skeg`) at its own x,
+the same model as the keel, adding directional stability and yaw damping.
 
 ## 6. Windage
 
@@ -201,7 +254,42 @@ process is stochastic and is stepped separately with its exact update and held
 constant over the RK4 stages. Test: harmonic oscillator error drops ~16× when h
 is halved.
 
-## Parameters (JEANNEAU_36)
+## Parameters (UNION_32, default)
+
+Class data: LOA 31.75 ft, LWL 27.25 ft, beam 10.83 ft, 11 500 lb, ballast
+4 400 lb, draft 4.83 ft. Volvo Penta MD11D, 2-cylinder, 25 hp. Per the owner:
+partial keel with a raked forefoot and a subtle Brewer bite, keel-hung rudder
+on the aft deadwood, shaft exiting into an aperture just forward of the rudder,
+Kiwiprop feathering 3-blade, bow pulpit with the anchor on a roller (in the
+collision outline, ~0.45 m past the stem), no bowsprit.
+
+Frame: x = 0 at mid-waterline. The overhangs are unequal, so mid-LOA is not
+the origin. Owner's measurements, stem to mast step: 13.62 ft at deck level and
+10.6 ft at the waterline. Their difference is the bow overhang, 3.02 ft =
+0.92 m; the stern overhang is the rest of LOA − LWL, 0.45 m. Both measurements
+then place the mast step at x = 0.924 m, and a unit test checks they agree.
+(An earlier version split the overhangs equally, 0.685 m each, which put the
+whole outline 0.235 m too far aft.)
+
+Keel geometry: the forefoot rake starts at the vee-berth / head bulkhead,
+2.72 ft forward of the mast step (owner), at x = 1.753 m; about a 45° rake to full draft;
+bottom flat then rising aft in a straight line to the rudder heel; the bite is
+cut 12 % of total draft (0.18 m) above that line (owner). Canoe body 0.52 m
+at midships + keel 0.95 m = 1.47 m draft. Integrated keel area 4.51 m².
+
+Calibrated: 5.4 kn at 2400 rpm, 6.0 kn at 2800, bollard ~2.6 kN. Hard over
+under power the radius is ~6.7 m against the 36i's 6.0 m; coasting in neutral
+at 3 kn, hard over, she turns 33° in 10 s against the 36i's 56°. Backing from
+rest at 1800 rpm with the wheel centred, walk swings the bow ~13° in 12 s.
+
+Unverified, to check on the boat: rake angle (~45° assumed), rated rpm and redline
+(2800 assumed), MS2 gear ratio (2.4:1 assumed, equal both ways), Kiwiprop
+diameter and set pitch (15″ assumed), prop handedness (right-hand assumed: in
+reverse from rest a right-hand prop kicks the stern to port), rudder size
+(0.6 m chord × 1.03 m). The walk coefficient (0.15) is fitted: back off at
+fixed rpm, wheel centred, and time the heading change.
+
+## Parameters (JEANNEAU_36, backup)
 
 Sun Odyssey 36i figures: LOA 10.94 m, LWL 9.84 m, beam 3.59 m, draft 1.94 m,
 5700 kg light (6200 loaded), Yanmar 3YM30 29 hp on a conventional shaft, KM2P
